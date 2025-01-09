@@ -5,6 +5,7 @@ import asyncio
 from telethon.sync import TelegramClient
 from telethon import errors
 from telethon.tl.types import ChannelParticipantsAdmins
+from telethon.sessions import MemorySession  # Import MemorySession
 import re
 import logging
 
@@ -19,7 +20,8 @@ class TelegramForwarder:
         self.api_id = api_id
         self.api_hash = api_hash
         self.phone_number = phone_number
-        self.client = TelegramClient('session_' + phone_number, api_id, api_hash)
+        self.session = MemorySession()  # Use an in-memory session
+        self.client = TelegramClient(self.session, api_id, api_hash)  # Pass MemorySession
 
     @staticmethod
     def extract_sui_addresses(text):
@@ -121,20 +123,8 @@ def read_credentials():
     phone_number = "+2349036259266"
     return api_id, api_hash, phone_number
 
-# Function to write credentials to file
-def write_credentials(api_id, api_hash, phone_number):
-    with open("credentials.txt", "w") as file:
-        file.write(api_id + "\n")
-        file.write(api_hash + "\n")
-        file.write(phone_number + "\n")
-
 async def main():
     api_id, api_hash, phone_number = read_credentials()
-    if not all([api_id, api_hash, phone_number]):
-        api_id = input("Enter your API ID: ")
-        api_hash = input("Enter your API Hash: ")
-        phone_number = input("Enter your phone number: ")
-        write_credentials(api_id, api_hash, phone_number)
 
     forwarder = TelegramForwarder(api_id, api_hash, phone_number)
     source_tg_id = int("-1002301121101")
