@@ -2,20 +2,16 @@ from keep_alive import keep_alive
 keep_alive()
 import time
 import asyncio
-import logging
 from telethon.sync import TelegramClient
 from telethon import errors
 from telethon.tl.types import ChannelParticipantsAdmins
 import re
+import logging
 
-# Configure logging
+# Logging setup
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("telegram_forwarder.log"),
-        logging.StreamHandler()
-    ]
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    level=logging.INFO
 )
 
 class TelegramForwarder:
@@ -37,17 +33,28 @@ class TelegramForwarder:
             try:
                 await self.client.connect()
                 if not await self.client.is_user_authorized():
-                    await self.client.send_code_request(self.phone_number)
+                    logging.info("User is not authorized. Requesting login code.")
                     try:
-                        await self.client.sign_in(self.phone_number, input('Enter the code: '))
-                    except errors.rpcerrorlist.SessionPasswordNeededError:
-                        password = input('Two-step verification is enabled. Enter your password: ')
+                        await self.client.send_code_request(self.phone_number)
+                        code = input('Enter the code sent to your phone: ')
+                        await self.client.sign_in(self.phone_number, code)
+                    except errors.SessionPasswordNeededError:
+                        password = input('Two-step verification enabled. Enter your password: ')
                         await self.client.sign_in(password=password)
+                    except errors.rpcerrorlist.AuthRestartError as e:
+                        logging.error(f"Authentication restart error: {e}")
+                        return
                 logging.info("Client connected successfully.")
                 break
             except errors.FloodWaitError as e:
                 logging.warning(f"Flood wait error. Retrying in {e.seconds} seconds.")
                 await asyncio.sleep(e.seconds)
+            except errors.rpcerrorlist.PhoneCodeInvalidError:
+                logging.error("Invalid code entered. Please try again.")
+                return
+            except errors.rpcerrorlist.PhoneCodeExpiredError:
+                logging.error("Code expired. Please restart the authentication process.")
+                return
             except Exception as e:
                 logging.error(f"Error during connection: {e}. Retrying in 10 seconds.")
                 await asyncio.sleep(10)
@@ -75,14 +82,13 @@ class TelegramForwarder:
         admins = await self.client.get_participants(source_chat_id, filter=ChannelParticipantsAdmins)
         admin_details = [(admin.id, admin.first_name or admin.username or "No Name") for admin in admins]
         
+        # Print the admin details (ID and Name pairs)
         bot_ids = [7845011793, 7517160605, 5434266369, 609517172, 6868734170]
         admin_ids = [admin.id for admin in admins]
 
-        for admin_id, admin_name in admin_details:
-            logging.info(f"Admin ID: {admin_id}, Admin Name: {admin_name}")
-
+        # Remove bot IDs from the admin_ids list
         admin_ids = [admin_id for admin_id in admin_ids if admin_id not in bot_ids]
-        logging.info(f"Filtered admin IDs: {admin_ids}")
+        logging.info(f"Filtered Admin IDs: {admin_ids}")
 
         while True:
             try:
@@ -96,9 +102,9 @@ class TelegramForwarder:
                             logging.info(f"Message contains a contract address: {message.text}")
                             nfdbot_entity = await self.client.get_entity("@nfd_sui_trade_bot")
                             await self.client.send_message(nfdbot_entity, "\n".join(CA))
-                            logging.info(f"Contract address {CA} forwarded successfully.")
+                            logging.info(f"Contract address {CA} forwarded")
                         else:
-                            logging.info(f"No valid contract address in message: {message.text}")
+                            logging.info(f"No CA in message: {message.text}")
                     last_message_id = max(last_message_id, message.id)
                 await asyncio.sleep(5)
             except errors.FloodWaitError as e:
@@ -108,12 +114,14 @@ class TelegramForwarder:
                 logging.error(f"Error during message forwarding: {e}. Retrying in 10 seconds.")
                 await asyncio.sleep(10)
 
+# Function to read credentials from file
 def read_credentials():
     api_id = 22573035
     api_hash = "28fe44c4ac64ae8344641ee68d55af4f"
     phone_number = "+2349036259266"
     return api_id, api_hash, phone_number
 
+# Function to write credentials to file
 def write_credentials(api_id, api_hash, phone_number):
     with open("credentials.txt", "w") as file:
         file.write(api_id + "\n")
@@ -135,7 +143,7 @@ async def main():
 
     while True:
         try:
-            logging.info("Hey Lex!")
+            logging.info("Starting message forwarding...")
             await forwarder.forward_messages_to_channel(source_tg_id, destination_tg_id, keywords)
         except Exception as e:
             logging.error(f"Unexpected error: {e}. Restarting main loop in 10 seconds.")
