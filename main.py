@@ -46,23 +46,20 @@ class TelegramForwarder:
                         await self.client.sign_in(password=password)
                         self.session_string = self.client.session.save()
                         logging.info(f"Session saved in memory: {self.session_string}")
-                    except errors.rpcerrorlist.AuthRestartError as e:
+                    except errors.AuthRestartError as e:
                         logging.error(f"Authentication restart error: {e}")
+                        return
+                    except errors.PhoneCodeInvalidError:
+                        logging.error("Invalid code entered. Please try again.")
+                        return
+                    except errors.PhoneCodeExpiredError:
+                        logging.error("Code expired. Please restart the authentication process.")
                         return
                 logging.info("Client connected successfully.")
                 break
             except errors.FloodWaitError as e:
                 logging.warning(f"Flood wait error. Retrying in {e.seconds} seconds.")
                 await asyncio.sleep(e.seconds)
-            except errors.rpcerrorlist.PhoneCodeInvalidError:
-                logging.error("Invalid code entered. Please try again.")
-                return
-            except errors.rpcerrorlist.PhoneCodeExpiredError:
-                logging.error("Code expired. Please restart the authentication process.")
-                return
-            except errors.rpcerrorlist.ResendCodeRequest as e:
-                logging.error(f"Code exhausted. Retry after some time: {e}")
-                await asyncio.sleep(600)  # Wait 10 minutes before retrying
             except Exception as e:
                 logging.error(f"Error during connection: {e}. Retrying in 10 seconds.")
                 await asyncio.sleep(10)
